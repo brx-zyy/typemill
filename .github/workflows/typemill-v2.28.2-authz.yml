@@ -52,6 +52,13 @@ jobs:
           test "$allowed" = "200"
           php -r '$x=unserialize(file_get_contents("data/multilang/index.txt")); if (($x["a1b2c3d4e5f60718"]["fr"] ?? null) !== "") { fwrite(STDERR, "Protected mapping was not changed; exploit not reproduced\n"); exit(1); } echo "LIVE_MULTILANG_IDOR: API cleared the out-of-scope fr/private/victim translation mapping after authorizing the unrelated in-scope /fr/docs/decoy URL.\n";'
           php -r 'require "system/vendor/autoload.php"; $decoy=\Symfony\Component\Yaml\Yaml::parseFile("content/_fr/docs/decoy.yaml"); $victim=\Symfony\Component\Yaml\Yaml::parseFile("content/_fr/private/victim.yaml"); if (($decoy["meta"]["translation_for"] ?? null) !== "" || ($victim["meta"]["translation_for"] ?? null) !== "a1b2c3d4e5f60718") { fwrite(STDERR, "Expected decoy metadata to be cleared while protected victim metadata remains linked\n"); exit(1); } echo "LIVE_MULTILANG_RECORD_MISMATCH: unrelated in-scope decoy metadata changed; protected victim metadata untouched.\n";'
+      - name: Test unused-media scope over HTTP
+        run: |
+          code=$(curl -sS -u 'researcher:ResearchPass123!' -o /tmp/unusedmedia.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/unusedmedia')
+          echo "unused-media HTTP status: $code"
+          cat /tmp/unusedmedia.json
+          test "$code" = "200"
+          php -r '$d=json_decode(file_get_contents("/tmp/unusedmedia.json"), true); if (!is_array($d) || strpos(json_encode($d), "restricted-secret.pdf") === false) { fwrite(STDERR, "Restricted draft media reference was not present in unused-media response\\n"); exit(1); } echo "LIVE_UNUSED_MEDIA_SCOPE_LEAK: unused-media response contains media reference from docs/internal/sibling outside editor folderaccess.\\n";'
       - name: Test draft navigation response over HTTP
         run: |
           code=$(curl -sS -u 'researcher:ResearchPass123!' -o /tmp/navigation.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/navigation?draft=true')
