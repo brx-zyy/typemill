@@ -57,7 +57,7 @@ file_put_contents('settings/users/researcher.yaml', Yaml::dump($user, 8));
 file_put_contents('content/docs/private/source.txt', "Base page draft\n");
 file_put_contents('content/docs/private/source.yaml', Yaml::dump(['meta' => ['title' => 'Source', 'pageid' => 'a1b2c3d4e5f60718']], 6));
 file_put_contents('content/docs/private/index.yaml', Yaml::dump(['meta' => ['title' => 'Private folder', 'pageid' => 'folderprivate001']], 6));
-file_put_contents('content/docs/internal/sibling.txt', "Restricted sibling draft\n");
+file_put_contents('content/docs/internal/sibling.txt', "Restricted sibling draft with media/files/restricted-secret.pdf reference.\n");
 file_put_contents('content/docs/internal/sibling.yaml', Yaml::dump(['meta' => ['title' => 'Sibling', 'pageid' => 'sibling000000001']], 6));
 file_put_contents('content/docs/internal/index.yaml', Yaml::dump(['meta' => ['title' => 'Internal folder', 'pageid' => 'folderinternal01']], 6));
 file_put_contents('content/_fr/docs/index.yaml', Yaml::dump(['meta' => ['title' => 'French docs folder', 'pageid' => 'frdocs000000001']], 6));
