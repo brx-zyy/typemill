@@ -52,6 +52,13 @@ jobs:
           cat /tmp/navigation.json
           test "$code" = "200"
           php -r '$d=json_decode(file_get_contents("/tmp/navigation.json"), true); if (!is_array($d) || strpos(str_replace(chr(92)."/", "/", json_encode($d)), "docs/internal/sibling") === false) { fwrite(STDERR, "Expected nested sibling path not present in actual API response\n"); exit(1); } echo "LIVE_DRAFT_NAVIGATION_SCOPE_LEAK: actual HTTP response contains docs/internal/sibling although account folderaccess is docs/private.\n";'
+      - name: Confirm draft content API still enforces folder scope
+        run: |
+          code=$(curl -sS -u 'researcher:ResearchPass123!' -G --data-urlencode 'url=/docs/internal/sibling' --data-urlencode 'draft=true' -o /tmp/restricted-content.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/article/content')
+          echo "restricted draft content HTTP status: $code"
+          cat /tmp/restricted-content.json
+          test "$code" = "403"
+          echo "CONTENT_CONTROL_PASS: direct draft-content retrieval remains blocked; reproduced impact is navigation metadata disclosure, not Markdown body disclosure."
       - name: Show server log on failure
         if: failure()
         run: cat /tmp/typemill-server.log
