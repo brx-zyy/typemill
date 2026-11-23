@@ -81,10 +81,10 @@ $index = [
     ],
 ];
 file_put_contents('data/multilang/index.txt', serialize($index));
-$loadedIndex = (new \\Typemill\\Models\\Multilang())->getMultilangIndex();
+$loadedIndex = (new \Typemill\Models\Multilang())->getMultilangIndex();
 if (!is_array($loadedIndex) || !isset($loadedIndex['a1b2c3d4e5f60718'])) {
     throw new RuntimeException('Multilang index fixture is not readable through Typemill storage API: ' . var_export($loadedIndex, true));
 }
-echo "Multilang index preflight: readable through Typemill storage API.\\n";
+echo "Multilang index preflight: readable through Typemill storage API.\n";
 
 echo "Fixture ready: editor has docs/private and fr/docs only.\n";
