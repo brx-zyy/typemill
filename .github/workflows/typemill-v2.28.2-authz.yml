@@ -1,0 +1,71 @@
+name: Typemill v2.28.2 live HTTP authorization validation
+
+on:
+  push:
+    branches:
+      - audit/typemill-v2.28.2-authz
+
+permissions:
+  contents: read
+
+jobs:
+  live-http-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          extensions: gd, mbstring, fileinfo, iconv, session, dom, xml
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Create isolated Typemill fixture
+        run: php .github/scripts/live-authz-fixture.php
+      - name: Start real Typemill HTTP server
+        run: |
+          php -S 127.0.0.1:8080 index.php > /tmp/typemill-server.log 2>&1 &
+          echo $! > /tmp/typemill-server.pid
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/8080) 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+      - name: Verify page ID is discoverable through filtered multilingual index
+        run: |
+          code=$(curl -sS -u 'researcher:ResearchPass123!' -G --data-urlencode 'url=/docs/private/source' -o /tmp/multilang-index.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/multilangindex')
+          echo "multilang index HTTP status: $code"
+          cat /tmp/multilang-index.json
+          test "$code" = "200"
+          php -r '$d=json_decode(file_get_contents("/tmp/multilang-index.json"), true); $entry=$d["multilangIndex"]["a1b2c3d4e5f60718"] ?? null; if (!is_array($entry) || ($entry["en"] ?? null) !== "docs/private/source" || ($entry["fr"] ?? null) !== "") { fwrite(STDERR, "Expected discoverable page ID with out-of-scope language URL filtered\n"); exit(1); } echo "PAGEID_DISCOVERY_PASS: editor can obtain pageid for permitted base page while protected translation URL is hidden.\n";'
+      - name: Test multilingual deletion source/target mismatch over HTTP
+        run: |
+          denied=$(curl -sS -u 'researcher:ResearchPass123!' -X DELETE -H 'Content-Type: application/json' -d '{"pageid":"a1b2c3d4e5f60718","lang":"fr","url":"/fr/private/victim"}' -o /tmp/delete-denied.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/multilang')
+          echo "out-of-scope target HTTP status: $denied"
+          cat /tmp/delete-denied.json
+          test "$denied" = "403"
+          php -r '$x=unserialize(file_get_contents("data/multilang/index.txt")); if (($x["a1b2c3d4e5f60718"]["fr"] ?? null) !== "fr/private/victim") { fwrite(STDERR, "Denied request unexpectedly changed protected mapping\n"); exit(1); } echo "CONTROL_PASS: directly requested out-of-scope target is denied and mapping remains intact.\n";'
+          allowed=$(curl -sS -u 'researcher:ResearchPass123!' -X DELETE -H 'Content-Type: application/json' -d '{"pageid":"a1b2c3d4e5f60718","lang":"fr","url":"/fr/docs/decoy"}' -o /tmp/delete-allowed.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/multilang')
+          echo "in-scope decoy URL HTTP status: $allowed"
+          cat /tmp/delete-allowed.json
+          test "$allowed" = "200"
+          php -r '$x=unserialize(file_get_contents("data/multilang/index.txt")); if (($x["a1b2c3d4e5f60718"]["fr"] ?? null) !== "") { fwrite(STDERR, "Protected mapping was not changed; exploit not reproduced\n"); exit(1); } echo "LIVE_MULTILANG_IDOR: API cleared the out-of-scope fr/private/victim translation mapping after authorizing the unrelated in-scope /fr/docs/decoy URL.\n";'
+          php -r 'require "system/vendor/autoload.php"; $decoy=\Symfony\Component\Yaml\Yaml::parseFile("content/_fr/docs/decoy.yaml"); $victim=\Symfony\Component\Yaml\Yaml::parseFile("content/_fr/private/victim.yaml"); if (($decoy["meta"]["translation_for"] ?? null) !== "" || ($victim["meta"]["translation_for"] ?? null) !== "a1b2c3d4e5f60718") { fwrite(STDERR, "Expected decoy metadata to be cleared while protected victim metadata remains linked\n"); exit(1); } echo "LIVE_MULTILANG_RECORD_MISMATCH: unrelated in-scope decoy metadata changed; protected victim metadata untouched.\n";'
+      - name: Test draft navigation response over HTTP
+        run: |
+          code=$(curl -sS -u 'researcher:ResearchPass123!' -o /tmp/navigation.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/navigation?draft=true')
+          echo "navigation HTTP status: $code"
+          cat /tmp/navigation.json
+          test "$code" = "200"
+          php -r '$d=json_decode(file_get_contents("/tmp/navigation.json"), true); if (!is_array($d) || strpos(str_replace(chr(92)."/", "/", json_encode($d)), "docs/internal/sibling") === false) { fwrite(STDERR, "Expected nested sibling path not present in actual API response\n"); exit(1); } echo "LIVE_DRAFT_NAVIGATION_SCOPE_LEAK: actual HTTP response contains docs/internal/sibling although account folderaccess is docs/private.\n";'
+      - name: Confirm draft content API still enforces folder scope
+        run: |
+          code=$(curl -sS -u 'researcher:ResearchPass123!' -G --data-urlencode 'url=/docs/internal/sibling' --data-urlencode 'draft=true' -o /tmp/restricted-content.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/article/content')
+          echo "restricted draft content HTTP status: $code"
+          cat /tmp/restricted-content.json
+          test "$code" = "403"
+          echo "CONTENT_CONTROL_PASS: direct draft-content retrieval remains blocked; reproduced impact is navigation metadata disclosure, not Markdown body disclosure."
+      - name: Show server log on failure
+        if: failure()
+        run: cat /tmp/typemill-server.log
