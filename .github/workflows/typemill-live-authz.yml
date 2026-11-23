@@ -32,6 +32,13 @@ jobs:
             fi
             sleep 1
           done
+      - name: Verify page ID is discoverable through filtered multilingual index
+        run: |
+          code=$(curl -sS -u 'researcher:ResearchPass123!' -G --data-urlencode 'url=/docs/private/source' -o /tmp/multilang-index.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/multilangindex')
+          echo "multilang index HTTP status: $code"
+          cat /tmp/multilang-index.json
+          test "$code" = "200"
+          php -r '$d=json_decode(file_get_contents("/tmp/multilang-index.json"), true); $entry=$d["multilangIndex"]["a1b2c3d4e5f60718"] ?? null; if (!is_array($entry) || ($entry["en"] ?? null) !== "docs/private/source" || ($entry["fr"] ?? null) !== "") { fwrite(STDERR, "Expected discoverable page ID with out-of-scope language URL filtered\n"); exit(1); } echo "PAGEID_DISCOVERY_PASS: editor can obtain pageid for permitted base page while protected translation URL is hidden.\n";'
       - name: Test multilingual deletion source/target mismatch over HTTP
         run: |
           denied=$(curl -sS -u 'researcher:ResearchPass123!' -X DELETE -H 'Content-Type: application/json' -d '{"pageid":"a1b2c3d4e5f60718","lang":"fr","url":"/fr/private/victim"}' -o /tmp/delete-denied.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/multilang')
