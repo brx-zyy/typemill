@@ -26,10 +26,9 @@ jobs:
           <?php
           require __DIR__ . '/system/vendor/autoload.php';
 
-          $reflection = new ReflectionClass(Typemill\\Models\\Navigation::class);
+          $reflection = new ReflectionClass(Typemill\Models\Navigation::class);
           $navigation = $reflection->newInstanceWithoutConstructor();
 
-          // Model the actual nested navigation object returned by the draft API.
           $privateChild = (object) ['urlRelWoF' => 'docs/private/secret-draft'];
           $siblingChild = (object) ['urlRelWoF' => 'docs/internal/secret-draft'];
           $docsFolder = (object) [
@@ -45,12 +44,12 @@ jobs:
           assert(count($visible[0]->folderContent) === 2);
           assert($siblingPathAllowed === false);
 
-          echo "DRAFT_NAVIGATION_FILTER_MISMATCH: reproduced; nested sibling remains in returned subtree although URL scope check denies it.\\n";
+          echo "DRAFT_NAVIGATION_FILTER_MISMATCH: reproduced; nested sibling remains in returned subtree although URL scope check denies it.\n";
 
-          // Exercise the two independent scope checks used by deleteMultilang().
-          $allowedScope = 'docs/assigned';
-          $outsideSource = $navigation->checkFolderAccess('/private/victim-source', $allowedScope);
-          $insideSource = $navigation->checkFolderAccess('/docs/assigned/source', $allowedScope);
+          // deleteMultilang uses both a source-page and a target-URL scope check.
+          $sourceScope = 'docs/assigned';
+          $outsideSource = $navigation->checkFolderAccess('/private/victim-source', $sourceScope);
+          $insideSource = $navigation->checkFolderAccess('/docs/assigned/source', $sourceScope);
 
           $lang = 'fr';
           $insideTargetUrl = '/docs/assigned/translation';
@@ -62,8 +61,8 @@ jobs:
 
           assert($outsideSource === false);
           assert($insideSource === true);
-          assert($navigation->checkFolderAccess($insideTarget, $allowedScope) === false);
-          assert($navigation->checkFolderAccess($outsideTarget, $allowedScope) === false);
+          assert($navigation->checkFolderAccess($insideTarget, 'fr/docs/assigned') === true);
+          assert($navigation->checkFolderAccess($outsideTarget, 'fr/docs/assigned') === false);
 
           $controller = file_get_contents(__DIR__ . '/system/typemill/Controllers/ControllerApiMultilang.php');
           assert(str_contains($controller, '$multilangData[$baselang] ?? \'/\''));
@@ -71,5 +70,5 @@ jobs:
           assert(str_contains($controller, '!$this->urlIsWithinFolderScope($request->getAttribute(\'c_username\'), $multilangData[$baselang] ?? \'/\')'));
           assert(str_contains($controller, '!$this->urlIsWithinFolderScope($request->getAttribute(\'c_username\'), $targetUrl)'));
 
-          echo "MULTILANG_DELETE_SCOPE_GUARDS: both source and target scope denials reproduced; no cross-folder authorization bypass demonstrated.\\n";
+          echo "MULTILANG_DELETE_SCOPE_GUARDS: source and target out-of-scope cases are denied by the actual Navigation method; no cross-folder bypass demonstrated.\n";
           PHP
