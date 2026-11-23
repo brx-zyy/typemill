@@ -39,6 +39,11 @@ jobs:
           cat /tmp/navigation.json
           test "$code" = "200"
           php -r '$d=json_decode(file_get_contents("/tmp/navigation.json"), true); if (!is_array($d) || strpos(str_replace(chr(92)."/", "/", json_encode($d)), "docs/internal/sibling") === false) { fwrite(STDERR, "Expected nested sibling path not present in actual API response\n"); exit(1); } echo "LIVE_DRAFT_NAVIGATION_SCOPE_LEAK: actual HTTP response contains docs/internal/sibling although account folderaccess is docs/private.\n";'
+      - name: Inspect multilingual index over HTTP
+        run: |
+          code=$(curl -sS -u 'researcher:ResearchPass123!' -G --data-urlencode 'url=/docs/private/source' -o /tmp/multilang-index.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/multilangindex')
+          echo "multilang index HTTP status: $code"
+          cat /tmp/multilang-index.json
       - name: Test multilingual deletion source/target mismatch over HTTP
         run: |
           denied=$(curl -sS -u 'researcher:ResearchPass123!' -X DELETE -H 'Content-Type: application/json' -d '{"pageid":"a1b2c3d4e5f60718","lang":"fr","url":"/private/victim"}' -o /tmp/delete-denied.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/multilang')
