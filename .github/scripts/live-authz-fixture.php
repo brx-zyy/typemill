@@ -32,6 +32,8 @@ foreach ($directories as $directory) {
 
 $settings = [
     'setup' => false,
+    'language' => 'en',
+    'langattr' => 'en',
     'author' => 'researcher',
     'mailfrom' => 'researcher@example.invalid',
     'projects' => 'languages',
