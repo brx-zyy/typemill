@@ -34,16 +34,17 @@ jobs:
           done
       - name: Test multilingual deletion source/target mismatch over HTTP
         run: |
-          denied=$(curl -sS -u 'researcher:ResearchPass123!' -X DELETE -H 'Content-Type: application/json' -d '{"pageid":"a1b2c3d4e5f60718","lang":"fr","url":"/fr/fr/private/victim"}' -o /tmp/delete-denied.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/multilang')
+          denied=$(curl -sS -u 'researcher:ResearchPass123!' -X DELETE -H 'Content-Type: application/json' -d '{"pageid":"a1b2c3d4e5f60718","lang":"fr","url":"/fr/private/victim"}' -o /tmp/delete-denied.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/multilang')
           echo "out-of-scope target HTTP status: $denied"
           cat /tmp/delete-denied.json
           test "$denied" = "403"
-          php -r '$x=unserialize(file_get_contents("data/multilang/index.txt")); if (($x["a1b2c3d4e5f60718"]["fr"] ?? null) !== "fr/fr/private/victim") { fwrite(STDERR, "Denied request unexpectedly changed protected mapping\n"); exit(1); } echo "CONTROL_PASS: directly requested out-of-scope target is denied and mapping remains intact.\n";'
+          php -r '$x=unserialize(file_get_contents("data/multilang/index.txt")); if (($x["a1b2c3d4e5f60718"]["fr"] ?? null) !== "fr/private/victim") { fwrite(STDERR, "Denied request unexpectedly changed protected mapping\n"); exit(1); } echo "CONTROL_PASS: directly requested out-of-scope target is denied and mapping remains intact.\n";'
           allowed=$(curl -sS -u 'researcher:ResearchPass123!' -X DELETE -H 'Content-Type: application/json' -d '{"pageid":"a1b2c3d4e5f60718","lang":"fr","url":"/fr/docs/decoy"}' -o /tmp/delete-allowed.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/multilang')
           echo "in-scope decoy URL HTTP status: $allowed"
           cat /tmp/delete-allowed.json
           test "$allowed" = "200"
-          php -r '$x=unserialize(file_get_contents("data/multilang/index.txt")); if (($x["a1b2c3d4e5f60718"]["fr"] ?? null) !== "") { fwrite(STDERR, "Protected mapping was not changed; exploit not reproduced\n"); exit(1); } echo "LIVE_MULTILANG_IDOR: API cleared the out-of-scope fr/fr/private/victim translation mapping after authorizing the unrelated in-scope /fr/docs/decoy URL.\n";'
+          php -r '$x=unserialize(file_get_contents("data/multilang/index.txt")); if (($x["a1b2c3d4e5f60718"]["fr"] ?? null) !== "") { fwrite(STDERR, "Protected mapping was not changed; exploit not reproduced\n"); exit(1); } echo "LIVE_MULTILANG_IDOR: API cleared the out-of-scope fr/private/victim translation mapping after authorizing the unrelated in-scope /fr/docs/decoy URL.\n";'
+          php -r 'require "system/vendor/autoload.php"; $decoy=\Symfony\Component\Yaml\Yaml::parseFile("content/_fr/docs/decoy.yaml"); $victim=\Symfony\Component\Yaml\Yaml::parseFile("content/_fr/private/victim.yaml"); if (($decoy["meta"]["translation_for"] ?? null) !== "" || ($victim["meta"]["translation_for"] ?? null) !== "a1b2c3d4e5f60718") { fwrite(STDERR, "Expected decoy metadata to be cleared while protected victim metadata remains linked\n"); exit(1); } echo "LIVE_MULTILANG_RECORD_MISMATCH: unrelated in-scope decoy metadata changed; protected victim metadata untouched.\n";'
       - name: Test draft navigation response over HTTP
         run: |
           code=$(curl -sS -u 'researcher:ResearchPass123!' -o /tmp/navigation.json -w '%{http_code}' 'http://127.0.0.1:8080/api/v1/navigation?draft=true')
