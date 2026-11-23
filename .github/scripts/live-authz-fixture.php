@@ -82,7 +82,7 @@ file_put_contents('content/_fr/private/victim.yaml', Yaml::dump([
 $index = [
     'a1b2c3d4e5f60718' => [
         'en' => 'docs/private/source',
-        'fr' => 'private/victim',
+        'fr' => 'fr/private/victim',
         'parent' => null,
     ],
 ];
