@@ -1,0 +1,75 @@
+name: Typemill authorization lead validation
+
+on:
+  push:
+    branches:
+      - audit/typemill-authz-validation
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          extensions: mbstring, dom, fileinfo, xml
+      - name: Install project dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Exercise actual Navigation authorization methods
+        run: |
+          php -d zend.assertions=1 -d assert.exception=1 <<'PHP'
+          <?php
+          require __DIR__ . '/system/vendor/autoload.php';
+
+          $reflection = new ReflectionClass(Typemill\\Models\\Navigation::class);
+          $navigation = $reflection->newInstanceWithoutConstructor();
+
+          // Model the actual nested navigation object returned by the draft API.
+          $privateChild = (object) ['urlRelWoF' => 'docs/private/secret-draft'];
+          $siblingChild = (object) ['urlRelWoF' => 'docs/internal/secret-draft'];
+          $docsFolder = (object) [
+              'urlRelWoF' => 'docs',
+              'elementType' => 'folder',
+              'folderContent' => [$privateChild, $siblingChild],
+          ];
+
+          $visible = $navigation->getAllowedFolders([$docsFolder], 'docs/private');
+          $siblingPathAllowed = $navigation->checkFolderAccess('docs/internal/secret-draft', 'docs/private');
+
+          assert(count($visible) === 1);
+          assert(count($visible[0]->folderContent) === 2);
+          assert($siblingPathAllowed === false);
+
+          echo "DRAFT_NAVIGATION_FILTER_MISMATCH: reproduced; nested sibling remains in returned subtree although URL scope check denies it.\\n";
+
+          // Exercise the two independent scope checks used by deleteMultilang().
+          $allowedScope = 'docs/assigned';
+          $outsideSource = $navigation->checkFolderAccess('/private/victim-source', $allowedScope);
+          $insideSource = $navigation->checkFolderAccess('/docs/assigned/source', $allowedScope);
+
+          $lang = 'fr';
+          $insideTargetUrl = '/docs/assigned/translation';
+          $outsideTargetUrl = '/private/victim-translation';
+          $insideTarget = (strpos($insideTargetUrl, '/' . $lang . '/') === 0 || $insideTargetUrl === '/' . $lang)
+              ? $insideTargetUrl : '/' . $lang . $insideTargetUrl;
+          $outsideTarget = (strpos($outsideTargetUrl, '/' . $lang . '/') === 0 || $outsideTargetUrl === '/' . $lang)
+              ? $outsideTargetUrl : '/' . $lang . $outsideTargetUrl;
+
+          assert($outsideSource === false);
+          assert($insideSource === true);
+          assert($navigation->checkFolderAccess($insideTarget, $allowedScope) === false);
+          assert($navigation->checkFolderAccess($outsideTarget, $allowedScope) === false);
+
+          $controller = file_get_contents(__DIR__ . '/system/typemill/Controllers/ControllerApiMultilang.php');
+          assert(str_contains($controller, '$multilangData[$baselang] ?? \'/\''));
+          assert(str_contains($controller, '$targetUrl'));
+          assert(str_contains($controller, '!$this->urlIsWithinFolderScope($request->getAttribute(\'c_username\'), $multilangData[$baselang] ?? \'/\')'));
+          assert(str_contains($controller, '!$this->urlIsWithinFolderScope($request->getAttribute(\'c_username\'), $targetUrl)'));
+
+          echo "MULTILANG_DELETE_SCOPE_GUARDS: both source and target scope denials reproduced; no cross-folder authorization bypass demonstrated.\\n";
+          PHP
